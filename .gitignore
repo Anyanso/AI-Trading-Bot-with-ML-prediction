@@ -1,0 +1,9 @@
+# Local environment and machine-specific files
+venv/
+__pycache__/
+*.pyc
+# Personal settings (alert topic, risk level, capital) and run outputs (account numbers, trade logs)
+settings.json
+state.json
+output/
+*.log
