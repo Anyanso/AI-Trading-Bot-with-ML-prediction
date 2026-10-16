@@ -21,8 +21,29 @@ A Python trading system built in two parts:
 | **Control panel** | Local web app (`http.server`, token-protected, localhost only): risk switch, strategy switch, Preview / Trade now / Close everything, automatic daily runs that follow US market hours (including daylight-saving changes), live account numbers refreshed from MT5. |
 | **Monitoring** | Dashboard explaining every position and change in plain English; real cost tracking (spread, commission, overnight swap) from MT5 deal history; equity chart; phone/email alerts via ntfy. |
 | **Evaluation** | `compare.py` tests the bot's versions against the bank (T-bills), buy-and-hold S&P 500 and a 60/40 portfolio over ~20 years, including overnight financing costs. |
+| **Prediction journal** | A true forward test: every day the ML model (retrained weekly, no look-ahead) and the trend signals record a 5-day prediction per market; each is scored when its outcome is known. Hit rate and AUC tracked month by month. |
+| **Unsupervised regime detection** | A Gaussian mixture model groups market days by volatility, cross-market correlation and trend strength/direction, with no labels, into named regimes ("Calm, rising", "Stressed: everything moving together"…). Logs today's regime and shows how the strategy performs in each. |
+| **Monthly report & scorecard** | Month-by-month return vs the bank, worst dip, costs, rejected orders, and a **shadow comparison** of live profit against what the research model should have made. A scorecard with rules fixed in advance marks each criterion PASS / FAIL / TOO EARLY. |
 
 ![Control panel](docs/images/control-panel.png)
+
+## How the bot is judged
+
+Results alone can't tell skill from luck for a long time, so the bot is held to nine criteria, written down **before** any live results came in (`monthly.py`):
+
+| Criterion | Rule | Judged after |
+|---|---|---|
+| Runs every weekday | ≥ 90% of weekdays | 2 weeks |
+| Orders accepted | ≤ 2% rejected (excluding "market closed") | 20 orders |
+| Live account follows the model | daily correlation ≥ 0.8 with the shadow model, gap within ±3% a year | 15 runs |
+| Trading costs | < 1% of the account a year | 30 days |
+| Swings in range | realised volatility within 70–130% of target | 60 days |
+| No big monthly loss | no month below −6% | first full month |
+| Beats the bank | more than T-bill-like interest after costs | 1 year |
+| ML predictions | AUC clearly above 0.5 on ≥ 500 unseen predictions | ~4 months |
+| Trend-signal calls | hit rate clearly above 50% on ≥ 500 calls | ~4 months |
+
+![Monthly report (test data)](docs/images/monthly-report.png)
 
 ## Honest results
 
@@ -57,6 +78,7 @@ pip install -r requirements.txt
 python run.py --simulate          # research report on simulated data (no accounts needed)
 python run.py --ticker SPY        # research report on real data from Yahoo Finance
 python compare.py                 # bot versions vs bank / S&P 500 / 60-40 (Yahoo data)
+python regimes.py --yahoo         # unsupervised market regimes + strategy performance per regime
 ```
 
 With MetaTrader 5 on Windows (demo account): see [SETUP_MT5.md](SETUP_MT5.md), then
@@ -79,6 +101,9 @@ backtest.py      next-bar execution, costs, statistics
 run.py / scan.py single-market research report / multi-market scan
 portfolio.py     volatility-targeted trend + long-only portfolio, strategy profiles
 compare.py       strategy vs benchmarks, with financing costs
+predictions.py   prediction journal: daily ML + trend predictions, scored 5 days later
+regimes.py       unsupervised market-regime detection (Gaussian mixture)
+monthly.py       monthly report, shadow model comparison and pass/fail scorecard
 execute.py       MT5 execution engine with safety checks
 symbols.py       broker symbol-name matching
 app.py           local control panel and scheduler

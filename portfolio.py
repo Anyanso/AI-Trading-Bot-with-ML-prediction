@@ -147,6 +147,9 @@ def stats(r: pd.Series) -> dict:
 
 
 # ---------------------------------------------------------------- data
+FRAMES = {}   # full OHLCV data of the last load, for the prediction journal
+
+
 def load_universe(symbols, bars, simulate=False, min_bars=600):
     closes, skipped = {}, []
     for i, s in enumerate(symbols):
@@ -157,6 +160,7 @@ def load_universe(symbols, bars, simulate=False, min_bars=600):
         if len(df) < min_bars:
             skipped.append((s, f"only {len(df)} daily bars")); continue
         closes[s] = df["Close"]
+        FRAMES[s] = df
         print(f"  {s:8s} {CLASS_OF.get(s, 'Other'):12s} {len(df):5d} bars from {df.index[0].date()}")
     if not closes:
         raise SystemExit("No markets loaded.")

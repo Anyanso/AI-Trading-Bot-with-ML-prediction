@@ -21,6 +21,9 @@ Double-click **`Start bot.bat`** in the tradebot folder (MT5 must be open and lo
 - **Signal report to share**: today's market readings in plain English, plus a short message with a Copy button for WhatsApp or Telegram. Also saved as `output\signal_report.html` and `output\signal_message.txt`.
 - **Phone alerts**: install the free **ntfy** app, subscribe to the private topic shown in the panel, tick *Send alerts to my phone*, and press *Send test alert*. Optionally add an email address. You're alerted when a safety stop closes a position, the account nears the safety switch, the safety switch triggers, a run fails, or orders are rejected, plus an optional short summary after each daily run.
 - **Live numbers**: while the panel is open, the account value, gains and each position's profit / loss refresh themselves from MT5 once a minute ("updated … (live)" at the top). The rest of the page refreshes after each run, or when you press F5.
+- **Monthly report**: month-by-month results against the bank, how closely the live account follows the model, costs, order problems, prediction accuracy and market regimes, plus a **scorecard** that marks each test PASS, FAIL or TOO EARLY. Also saved as `output\monthly.html` and `output\monthly_report.csv`.
+- **Market regimes**: the market "mood" found by the unsupervised model today, the moods it has found over the years, and how the strategy did in each. Refreshed after every run.
+- **Behind the scenes, every run also records**: the prediction journal (`output\predictions.csv`), today's regime (`output\regime_log.csv`) and the model-vs-live comparison (`output\shadow_log.csv`). The first run each week also retrains the ML models, which adds about a minute.
 - **Resume trading** appears only after the safety switch has stopped the bot.
 
 The buttons never trade a real-money account. That stays a deliberate command-line step (section 6).

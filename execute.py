@@ -41,6 +41,8 @@ DEVIATION = 20           # max slippage in points
 OUT = "output"
 ACTIONS = []             # orders sent during this run, for the dashboard
 SETTINGS_FILE = "settings.json"
+CURRENT_LOGIN = None     # account the run is trading (written into the trade log)
+LAST_DATA = {}           # closes and full price data of this run, for the journal and regime log
 RISK_PRESETS = {   # target_vol = yearly swing size; max_drawdown = safety-switch level
     "cautious":   {"target_vol": 0.05, "max_drawdown": 0.10},
     "normal":     {"target_vol": 0.10, "max_drawdown": 0.15},
@@ -67,6 +69,8 @@ def connect(real=False, confirm=None):
     acc = mt5.account_info()
     if acc is None:
         mt5.shutdown(); raise SystemExit("No account logged in to MT5.")
+    global CURRENT_LOGIN
+    CURRENT_LOGIN = acc.login
     is_demo = acc.trade_mode == mt5.ACCOUNT_TRADE_MODE_DEMO
     if not is_demo:
         if not real:
@@ -376,7 +380,7 @@ def log_trade(symbol, action, lots, price, ok, msg, reason, spread_cost=0.0):
     _append(os.path.join(OUT, "trade_log.csv"), {
         "time": datetime.now().isoformat(timespec="seconds"), "symbol": symbol, "action": action,
         "lots": lots, "price": price, "ok": ok, "result": msg, "reason": reason,
-        "spread_cost": spread_cost})
+        "spread_cost": spread_cost, "login": CURRENT_LOGIN})
 
 
 def log_account(mt5, note):
@@ -401,6 +405,70 @@ def _append(path, row):
             pd.concat([pd.read_csv(path), new], ignore_index=True).to_csv(path, index=False)
             return
     new.to_csv(path, mode="a", header=not os.path.exists(path), index=False)
+
+
+# ---------------------------------------------------------------- shadow (model vs live)
+SHADOW_STATE = os.path.join(OUT, "shadow_state.json")
+
+
+def _mid(mt5, sym):
+    t = mt5.symbol_info_tick(sym)
+    return (t.bid + t.ask) / 2 if t is not None and t.bid and t.ask else None
+
+
+def shadow_update(mt5, acc):
+    """Before trading: compare what the live account made since the last live run with what the
+    model's targets would have made (target weight x sizing equity x price change)."""
+    try:
+        if not os.path.exists(SHADOW_STATE):
+            return
+        with open(SHADOW_STATE, encoding="utf-8") as f:
+            st = json.load(f)
+        if str(st.get("login")) != str(acc.login):
+            return
+        model = 0.0
+        n = 0
+        for sym, w in st["weights"].items():
+            p0, p1 = st["prices"].get(sym), _mid(mt5, sym)
+            if p0 and p1 and w:
+                model += w * st["sizing_equity"] * (p1 / p0 - 1)
+                n += 1
+        _append(os.path.join(OUT, "shadow_log.csv"), {
+            "time": datetime.now().isoformat(timespec="seconds"), "prev_time": st["time"], "login": acc.login,
+            "equity_prev": st["equity"], "equity_now": acc.equity, "live_pnl": round(acc.equity - st["equity"], 2),
+            "model_pnl": round(model, 2), "markets": n})
+    except Exception as e:
+        print(f"(shadow comparison skipped: {e})")
+
+
+def shadow_save(mt5, decisions, sizing_equity):
+    """After trading: remember today's targets and prices for tomorrow's comparison."""
+    try:
+        acc = mt5.account_info()
+        weights = {d["symbol"]: float(d["weight"]) for d in decisions if d.get("weight")}
+        prices = {s: _mid(mt5, s) for s in weights}
+        with open(SHADOW_STATE, "w", encoding="utf-8") as f:
+            json.dump({"time": datetime.now().isoformat(timespec="seconds"), "login": acc.login,
+                       "equity": acc.equity, "sizing_equity": sizing_equity,
+                       "weights": weights, "prices": {k: v for k, v in prices.items() if v}}, f, indent=1)
+    except Exception as e:
+        print(f"(shadow state not saved: {e})")
+
+
+def research_logs(sig):
+    """Prediction journal and market-regime log. Never stops a trading run."""
+    try:
+        import predictions, symbols as sm
+        predictions.record(LAST_DATA.get("frames", {}), sig, std_name=sm.standard)
+    except Exception as e:
+        print(f"(prediction journal not updated: {e})")
+    try:
+        import regimes
+        if "closes" in LAST_DATA:
+            regimes.log_today(LAST_DATA["closes"])
+            regimes.report(LAST_DATA["closes"], profile=load_settings().get("profile", "classic"))
+    except Exception as e:
+        print(f"(regime not logged: {e})")
 
 
 # ---------------------------------------------------------------- commands
@@ -466,6 +534,8 @@ def targets(a):
               "bonds, gold and commodities. It needs a broker with tradable index CFDs to work as intended.")
     closes, skipped = pf.load_universe(ok, a.bars)
     closes = closes.iloc[:-1]  # drop the newest day: it is still forming
+    LAST_DATA["closes"] = closes
+    LAST_DATA["frames"] = {sym: pf.FRAMES[sym].loc[:closes.index[-1]] for sym in closes if sym in pf.FRAMES}
     kw = dict(target_vol=a.target_vol, max_gross=a.max_gross, max_weight=a.max_weight, cost_bps=0)
     tf = pf.build_portfolio(closes, **kw)
     lo = pf.build_portfolio(closes, long_only=True, class_budget=budget, **kw)
@@ -577,6 +647,8 @@ def main():
     try:
         if kill_switch(mt5, acc, a.max_drawdown, dry):
             return
+        if not dry:
+            shadow_update(mt5, acc)
         equity = acc.equity
         cap_amt = a.capital or load_settings().get("capital")
         if cap_amt:
@@ -700,7 +772,9 @@ def main():
                               "near_flip": d.get("near_flip", "")} for d in decisions])
         hp = os.path.join(OUT, "signal_history.csv")
         hist.to_csv(hp, mode="a", header=not os.path.exists(hp), index=False)
+        research_logs(sig)
         if not dry:
+            shadow_save(mt5, decisions, equity)
             log_account(mt5, "rebalance")
             changed = [d for d in decisions if d["action"] in ("opened", "increased", "trimmed", "closed", "flipped")]
             failed = [d for d in decisions if d["action"] == "failed" and "closed" not in d.get("detail", "").lower()]

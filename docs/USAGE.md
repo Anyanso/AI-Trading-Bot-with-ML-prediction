@@ -18,6 +18,9 @@ python execute.py                           # dry run of today's trades; add --l
 python dashboard.py                         # plain-English dashboard of what the bot holds and did
 python signals.py                           # shareable market readings (page + short message)
 python app.py                               # control panel: dashboard + buttons (or double-click "Start bot.bat")
+python predictions.py                       # prediction journal scorecard (ML + trend calls, month by month)
+python regimes.py                           # unsupervised market regimes (--yahoo or --simulate without MT5)
+python monthly.py                           # monthly report + pass/fail scorecard -> output/monthly.html
 ```
 
 Open `output/report.html` in a browser.
@@ -54,6 +57,9 @@ Open `output/report.html` in a browser.
 | `app.py` / `Start bot.bat` | Local control panel: risk switch, preview / trade now / close everything, daily auto-trading |
 | `signals.py` | Shareable "Market readings" report and a short message to paste into WhatsApp/Telegram, with the model's track record and a not-advice notice |
 | `alerts.py` | Phone and email alerts through the free ntfy app (stop hit, near safety switch, kill switch, failed runs, daily summary) |
+| `predictions.py` | Prediction journal: each run records the ML model's and trend signals' 5-day call per market and scores them once the outcome is known |
+| `regimes.py` | Unsupervised regime detection (Gaussian mixture on volatility, correlation, trend strength and direction); daily log and report |
+| `monthly.py` | Monthly report: return vs bank, shadow model vs live, costs, order problems, predictions, regimes, and a pass/fail scorecard |
 | `dashboard.py` | Builds output/dashboard.html: account value, positions in plain words, today's changes and why, markets to watch |
 | `execute.py` | Trades the 25% trend / 75% long-only blend on MT5: dry run by default, demo unless `--real --confirm-account`, with broker pre-checks, crash-guard stop-losses, a 3-day re-entry wait after a stop, kill switch, alerts and logs |
 

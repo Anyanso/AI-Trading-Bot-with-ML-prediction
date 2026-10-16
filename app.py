@@ -251,6 +251,8 @@ def controls_html():
     <button class="btn primary" id="live">Trade now</button>
     <button class="btn danger-o" id="closeall">Close everything</button>
     <a class="btn" href="/signals" target="_blank">Signal report to share</a>
+    <a class="btn" href="/monthly" target="_blank">Monthly report</a>
+    <a class="btn" href="/regimes" target="_blank">Market regimes</a>
     {resume}
    </div>
    <label class="auto"><input type="checkbox" id="auto" {'checked' if s['auto'] else ''}> <b>Trade automatically every weekday</b></label>
@@ -418,6 +420,31 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, signals.build()[0], "text/html")
             except BaseException as e:
                 return self._send(200, error_page(str(e)).replace("Can't reach MetaTrader 5", "No signal report yet"), "text/html")
+        if path == "/monthly":
+            try:
+                import monthly
+                with MT5_LOCK:
+                    mt5 = None
+                    try:
+                        import data
+                        mt5 = data.mt5_connect()
+                    except BaseException:
+                        pass
+                    try:
+                        page = monthly.build(mt5)
+                    finally:
+                        if mt5 is not None:
+                            mt5.shutdown()
+                return self._send(200, page, "text/html")
+            except BaseException as e:
+                return self._send(200, error_page(str(e)).replace("Can't reach MetaTrader 5", "Monthly report not available"), "text/html")
+        if path == "/regimes":
+            p = os.path.join(HERE, "output", "regimes.html")
+            if os.path.exists(p):
+                with open(p, encoding="utf-8") as f:
+                    return self._send(200, f.read(), "text/html")
+            return self._send(200, error_page("The regime report is created by the bot's next run "
+                                              "(Preview or Trade now).").replace("Can't reach MetaTrader 5", "No regime report yet"), "text/html")
         if path == "/api/live":
             if not MT5_LOCK.acquire(timeout=10):
                 return self._send(200, {"busy": True})
